@@ -1,0 +1,30 @@
+{% comment %}
+  Renders the line item image: custom design thumbnail (Preview_Image) if present, otherwise the variant image.
+  Usage: {% render 'sticker-line-item-image', item: line_item, size: 120, class: 'cart-item__image', alt: line_item.title %}
+{% endcomment %}
+{% liquid
+  assign img_size = size | default: 120
+  assign img_class = class | default: ''
+  assign img_alt = alt | default: item.title
+  assign custom_url = item.properties.Preview_Image
+%}
+{% if custom_url != blank %}
+  {% comment %} theme-check-disable RemoteAsset {% endcomment %}
+  <img
+    src="{{ custom_url }}"
+    alt="{{ img_alt | escape }}"
+    class="{{ img_class }}"
+    width="{{ img_size }}"
+    height="{{ img_size }}"
+    loading="lazy"
+    style="object-fit: contain;"
+  />
+  {% comment %} theme-check-enable RemoteAsset {% endcomment %}
+
+{% else %}
+  {% if item.image %}
+    {{ item.image | image_url: width: img_size | image_tag: alt: img_alt, class: img_class, loading: 'lazy', width: img_size, height: img_size }}
+  {% else %}
+    {{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}
+  {% endif %}
+{% endif %}

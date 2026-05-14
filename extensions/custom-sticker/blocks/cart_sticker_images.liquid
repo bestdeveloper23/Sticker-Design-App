@@ -1,0 +1,192 @@
+{% comment %}
+  Add this block to your theme's Cart section (e.g. main cart or cart drawer).
+  It updates line item images on the cart page to show custom design thumbnails (Preview_Image) when present.
+  Hidden properties (Design_URL, Original_Image_URL, etc.) use .sticker-cart-hidden so they stay hidden after cart API re-renders.
+{% endcomment %}
+<style>
+  .sticker-cart-hidden { display: none !important; }
+</style>
+<div {{ block.shopify_attributes }} data-sticker-cart-images-root></div>
+<script>
+  (function () {
+    if (!window.location.pathname.includes("/cart")) return;
+
+    var TRUNCATE_URL_LENGTH = 30;
+
+    function truncateUrlText(url) {
+      if (!url || typeof url !== "string") return "";
+      var s = url.trim();
+      return s.length <= TRUNCATE_URL_LENGTH ? s : s.substring(0, TRUNCATE_URL_LENGTH) + "\u2026";
+    }
+
+    function replaceDdWithTruncatedLink(dd, fullUrl) {
+      if (!dd || !fullUrl) return;
+      var href = String(fullUrl).replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      var text = truncateUrlText(fullUrl).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      dd.innerHTML = "<a href=\"" + href + "\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"sticker-truncated-url\">" + text + "</a>";
+    }
+
+    function applyCartImages() {
+      fetch("/cart.js")
+        .then(function (res) { return res.json(); })
+        .then(function (cart) {
+          if (!cart || !cart.items || cart.items.length === 0) return;
+
+          var rows = document.querySelectorAll(
+            ".cart-item, [data-line-item], .line-item, .cart__line-item, tr.cart-line-item, [data-cart-item], .cart-item__content"
+          );
+          if (rows.length === 0) {
+            rows = document.querySelectorAll("form[action*='/cart'] .cart-item, form[action*='/cart'] tr, .cart-items .cart-item, [data-cart-item]");
+          }
+          if (rows.length === 0) {
+            var form = document.querySelector("form[action*='/cart']");
+            if (form) {
+              var byRow = form.querySelectorAll("[data-index], .cart-row, [data-line-index]");
+              if (byRow.length >= cart.items.length) rows = byRow;
+            }
+          }
+
+          var itemIndex = 0;
+          cart.items.forEach(function (item) {
+            var props = item.properties || {};
+            var previewUrl = props.Preview_Image || props.Preview;
+            var designName = props.Image_Name || "Custom sticker";
+            var row = rows[itemIndex];
+            if (row && previewUrl) {
+              var img = row.querySelector("img");
+              if (img && img.src !== previewUrl) {
+                img.src = previewUrl;
+                img.style.objectFit = "contain";
+              }
+            }
+            if (row && (props.Design_URL || props._Design_URL || props.Reference_Code || previewUrl || props.Sticker_Size || props.Outline_Type || props.Preview || props.Edit || props["_Admin Edit"] || props["_Print Ready File"])) {
+              var propBlock = row.querySelector("dl, .line-item__properties, .cart-item__properties, .product-details, .cart-item__details dl, [class*='propert']");
+              if (!propBlock) {
+                var dts = row.querySelectorAll("dt");
+                for (var i = 0; i < dts.length; i++) {
+                  var t = (dts[i].textContent || "").trim();
+                  if (t.indexOf("Design_URL") !== -1 || t.indexOf("_Design_URL") !== -1 || t.indexOf("Reference_Code") !== -1 || t.indexOf("Sticker_Size") !== -1 || t.indexOf("Outline_Type") !== -1) {
+                    propBlock = dts[i].parentElement;
+                    break;
+                  }
+                }
+              }
+              if (propBlock) {
+                var allowedProps = ["Sticker_Size", "Outline_Type", "Finish", "Lamination", "Calculated_Price", "Preview", "Edit"];
+                var propPairs = [];
+                allowedProps.forEach(function(key) {
+                  if (props[key]) {
+                    var val = String(props[key]).replace(/</g, "&lt;").replace(/"/g, "&quot;");
+                    propPairs.push("<div style=\"font-size:12px;color:#666;margin-top:4px;\"><strong>" + key + ":</strong> " + val + "</div>");
+                  }
+                });
+                if (propPairs.length > 0) {
+                  propBlock.innerHTML = propPairs.join("");
+                } else {
+                  propBlock.style.display = "none";
+                }
+                var allDts = propBlock.querySelectorAll("dt");
+                allDts.forEach(function(dt) {
+                  var key = (dt.textContent || "").trim();
+                  if (key && allowedProps.indexOf(key) === -1 && 
+                      (key.indexOf("Reference_Code:") !== -1 || key.indexOf("Design_URL") !== -1 || key.indexOf("Original_Image_URL") !== -1 ||
+                       key.indexOf("Preview_Image:") !== -1 || key.indexOf("Preview:") !== -1 || key.indexOf("Edit:") !== -1 ||
+                       key.indexOf("_Admin Edit:") !== -1 || key.indexOf("_Print Ready File:") !== -1 ||
+                       key.indexOf("Image_Name:") !== -1 || key.indexOf("Quantity:") !== -1 || key === "Size" || key === "Select Quantity:")) {
+                    dt.classList.add("sticker-cart-hidden");
+                    var dd = dt.nextElementSibling;
+                    if (dd && dd.tagName === "DD") {
+                      dd.classList.add("sticker-cart-hidden");
+                    }
+                  }
+                });
+                var allDds = propBlock.querySelectorAll("dd");
+                allDds.forEach(function(dd) {
+                  var prev = dd.previousElementSibling;
+                  if (prev && prev.tagName === "DT") {
+                    var key = (prev.textContent || "").trim();
+                    if (key && allowedProps.indexOf(key) === -1 && 
+                        (key.indexOf("Reference_Code:") !== -1 || key.indexOf("Design_URL") !== -1 || key.indexOf("Original_Image_URL") !== -1 ||
+                         key.indexOf("Preview_Image:") !== -1 || key.indexOf("Preview:") !== -1 || key.indexOf("Edit:") !== -1 ||
+                         key.indexOf("_Admin Edit:") !== -1 || key.indexOf("_Print Ready File:") !== -1 ||
+                         key.indexOf("Image_Name:") !== -1 || key.indexOf("Quantity:") !== -1 || key === "Size" || key === "Select Quantity:")) {
+                      dd.classList.add("sticker-cart-hidden");
+                    }
+                  }
+                });
+              }
+            }
+            itemIndex += 1;
+          });
+        })
+        .catch(function () {});
+      // After cart API re-renders, theme may re-output properties elsewhere; hide any Design_URL / Original_Image_URL in the cart
+      var cartRoot = document.querySelector("form[action*='/cart'], [data-sticker-cart-images-root], .cart, #cart") || document;
+      var scope = cartRoot === document ? document.body : cartRoot;
+      var allDtsInCart = scope.querySelectorAll ? scope.querySelectorAll("dt") : [];
+      allDtsInCart.forEach(function(dt) {
+        var key = (dt.textContent || "").trim();
+        if (key && (key.indexOf("Design_URL") !== -1 || key.indexOf("Original_Image_URL") !== -1 || key.indexOf("_Design_URL") !== -1 || key.indexOf("_Original_Image_URL") !== -1)) {
+          dt.classList.add("sticker-cart-hidden");
+          var dd = dt.nextElementSibling;
+          if (dd && dd.tagName === "DD") dd.classList.add("sticker-cart-hidden");
+        }
+      });
+    }
+
+    function hideDesignUrlInCart() {
+      var cartRoot = document.querySelector("form[action*='/cart'], .cart, #cart, [data-sticker-cart-images-root]");
+      var scope = cartRoot && cartRoot !== document.body ? cartRoot : document.body;
+      var dts = scope.querySelectorAll ? scope.querySelectorAll("dt") : [];
+      dts.forEach(function(dt) {
+        var key = (dt.textContent || "").trim();
+        if (key && (key.indexOf("Design_URL") !== -1 || key.indexOf("Original_Image_URL") !== -1 || key.indexOf("_Design_URL") !== -1 || key.indexOf("_Original_Image_URL") !== -1)) {
+          dt.classList.add("sticker-cart-hidden");
+          var dd = dt.nextElementSibling;
+          if (dd && dd.tagName === "DD") dd.classList.add("sticker-cart-hidden");
+        }
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", applyCartImages);
+    } else {
+      applyCartImages();
+    }
+
+    document.addEventListener("cart:refresh", applyCartImages);
+    document.addEventListener("cart:updated", applyCartImages);
+
+    var hideTimeout;
+    function scheduleHide() {
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(function() {
+        hideDesignUrlInCart();
+        applyCartImages();
+      }, 200);
+    }
+    if (typeof MutationObserver !== "undefined") {
+      var observer = new MutationObserver(function() { scheduleHide(); });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+    var origFetch = window.fetch;
+    if (typeof origFetch === "function") {
+      window.fetch = function(url, opts) {
+        var p = origFetch.apply(this, arguments);
+        var u = (typeof url === "string" ? url : (url && url.url) ? url.url : "") || "";
+        if (u.indexOf("/cart/change") !== -1) {
+          p.then(function() { scheduleHide(); }).catch(function() { scheduleHide(); });
+        }
+        return p;
+      };
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Cart sticker images",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}

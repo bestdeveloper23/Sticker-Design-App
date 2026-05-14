@@ -1,0 +1,35 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "b7f6b4e0ba14925a30c378de23b1b8e8"
+name = "Custom Sticker App"
+application_url = "https://anycontourapp.vercel.app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+scopes = "write_products,write_app_proxy,read_orders,write_draft_orders"
+
+[app_proxy]
+url = "/apps/proxy"
+prefix = "apps"
+subpath = "custom-stickers"
+
+[auth]
+redirect_urls = [ 
+  "https://anycontourapp.vercel.app/api/auth/callback",
+  "https://anycontourapp.vercel.app/auth/callback",
+  "https://anycontourapp.vercel.app/auth/shopify/callback"
+]

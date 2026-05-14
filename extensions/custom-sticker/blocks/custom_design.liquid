@@ -1,0 +1,1041 @@
+{%- assign sticker_designer_tag = block.settings.product_tag | strip -%}
+{%- if sticker_designer_tag == blank -%}
+  {%- assign sticker_designer_tag = "Sticker Designer" -%}
+{%- endif -%}
+{%- assign show_sticker_designer = false -%}
+{%- if product and product.tags contains sticker_designer_tag -%}
+  {%- assign show_sticker_designer = true -%}
+{%- endif -%}
+{%- if show_sticker_designer -%}
+{%- assign hide_variant_label = block.settings.hide_variant_label | strip -%}
+{%- if hide_variant_label == blank -%}
+  {%- assign hide_variant_label = "Custom Size" -%}
+{%- endif -%}
+<div id="sticker-designer-block" {{ block.shopify_attributes }} data-hide-variant-label="{{ hide_variant_label | escape }}">
+  <button
+    id="design-now-btn"
+    type="button"
+    style="padding:12px 24px;font-size:16px;"
+  >
+    Design Now
+  </button>
+  <div
+    id="sticker-designer-modal"
+    style="display:none;position:fixed;inset:0;z-index:99999;"
+    aria-hidden="true"
+  >
+    <div
+      id="sticker-designer-backdrop"
+      style="position:absolute;inset:0;background:rgba(0,0,0,0.5);cursor:pointer;"
+      aria-label="Close designer"
+    ></div>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sticker designer"
+      id="sticker-designer-dialog"
+      style="position:absolute;top:0;left:0;width:100vw;height:100vh;background:#fff;overflow:hidden;pointer-events:auto;"
+    >
+      <iframe
+        id="sticker-designer-frame"
+        title="Sticker designer"
+        style="width:100%;height:100%;border:0;display:block;"
+        loading="lazy"
+        referrerpolicy="origin"
+      ></iframe>
+    </div>
+  </div>
+  <div
+    id="sticker-designer-status"
+    style="margin-top:8px;font-size:14px;"
+    aria-live="polite"
+  ></div>
+
+  <div id="sticker-designer-preview" style="margin-top:12px;display:none;">
+    <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Your design</div>
+    <img
+      id="sticker-designer-preview-image"
+      alt="Custom sticker preview"
+      width="300"
+      height="300"
+      style="max-width:100%;height:auto;border:1px solid #e1e3e5;border-radius:10px;background:#fafafa;"
+      loading="lazy"
+    />
+    <div id="sticker-designer-downloads" style="margin-top:8px;display:none;font-size:13px;"></div>
+  </div>
+
+  <div
+    id="sticker-designs-library"
+    style="margin-top:16px;"
+  ></div>
+</div>
+
+{%- comment -%} Variant map: option string (e.g. "2x2 · 50") -> variant id. Exclude the "Custom Size" variant so only preset size/qty match; custom uses draft order. {%- endcomment -%}
+<script type="application/json" id="sticker-designer-variant-map">
+[
+  {%- for v in product.variants -%}
+    {%- assign vkey = v.option1 -%}
+    {%- if v.option2 != blank -%}
+      {%- assign vkey = v.option1 | append: ' · ' | append: v.option2 -%}
+    {%- endif -%}
+    {%- assign vkey_trim = vkey | strip -%}
+    {%- unless vkey_trim == hide_variant_label -%}
+    {"id":{{ v.id }},"key":{{ vkey | json }}}{% unless forloop.last %},{% endunless %}
+    {%- endunless -%}
+  {%- endfor -%}
+]
+</script>
+{%- comment -%} Custom variant ID: the hidden variant (e.g. "Custom Size") used only for draft orders. {%- endcomment -%}
+{%- assign custom_variant_id = "" -%}
+{%- for v in product.variants -%}
+  {%- assign vopt = v.option1 | strip -%}
+  {%- if vopt == hide_variant_label -%}
+    {%- assign custom_variant_id = v.id -%}
+    {%- break -%}
+  {%- endif -%}
+{%- endfor -%}
+<script type="application/json" id="sticker-designer-custom-variant-id">{% if custom_variant_id != "" %}{{ custom_variant_id }}{% else %}null{% endif %}</script>
+
+<script>
+  (function () {
+    {%- assign designer_origin = block.settings.designer_url | strip -%}
+    {%- if designer_origin == blank -%}
+      {%- assign designer_origin = "https://stickeroutline.replit.app" -%}
+    {%- endif -%}
+    var DESIGN_ORIGIN = {{ designer_origin | json }};
+    try { DESIGN_ORIGIN = new URL(DESIGN_ORIGIN).origin; } catch (e) {}
+    const DESIGN_PATH = "/";
+    {%- assign draft_path = block.settings.draft_order_path | strip -%}
+    {%- if draft_path == blank -%}
+      {%- assign draft_path = "/apps/custom-stickers/create-draft" -%}
+    {%- endif -%}
+    const DRAFT_ORDER_PATH = {{ draft_path | json }};
+    {%- comment -%} Match the host that rendered this page (custom domain or .myshopify.com) so /apps/... proxy URLs always hit the same storefront hostname. {%- endcomment -%}
+    {%- if request.origin != blank -%}
+    var STOREFRONT_ORIGIN = {{ request.origin | json }};
+    {%- else -%}
+    var STOREFRONT_ORIGIN = "";
+    {%- endif -%}
+    function getStorefrontOrigin() {
+      if (typeof STOREFRONT_ORIGIN === "string" && STOREFRONT_ORIGIN.indexOf("http") === 0) {
+        try {
+          return new URL(STOREFRONT_ORIGIN).origin;
+        } catch (e) {}
+      }
+      return window.location.origin;
+    }
+    /** App proxy / errors sometimes return HTML; res.json() then throws "Unexpected token '<'". */
+    function readResponseAsJson(res, label) {
+      return res.text().then(function (text) {
+        var t = (text || "").trim();
+        if (!t) {
+          throw new Error((label || "Request") + ": empty response (HTTP " + res.status + ").");
+        }
+        if (t.charAt(0) === "<") {
+          throw new Error(
+            (label || "App proxy") +
+              " returned HTML instead of JSON (HTTP " +
+              res.status +
+              "). Check: app is installed on this store; Settings → Apps → your app → App proxy matches " +
+              DRAFT_ORDER_PATH +
+              "; Partner Dashboard app URL matches your deployed server (e.g. Vercel)."
+          );
+        }
+        try {
+          return JSON.parse(t);
+        } catch (e) {
+          throw new Error(
+            (label || "Request") + ": invalid JSON (HTTP " + res.status + ")."
+          );
+        }
+      });
+    }
+
+    var STICKER_SHOP_SETTINGS = null;
+    var STICKER_SETTINGS_LOADING = null;
+    function stickerSettingsUrl() {
+      var base = (DRAFT_ORDER_PATH || "/apps/custom-stickers/create-draft").replace(/\/create-draft\/?$/, "") || "/apps/custom-stickers";
+      var path = base + "/settings";
+      if (path.indexOf("/") === 0) return getStorefrontOrigin() + path;
+      return path;
+    }
+    function fetchStickerShopSettings(callback) {
+      if (STICKER_SHOP_SETTINGS) {
+        if (callback) callback(null);
+        return;
+      }
+      if (STICKER_SETTINGS_LOADING) {
+        STICKER_SETTINGS_LOADING.then(function () { if (callback) callback(null); }).catch(function (e) { if (callback) callback(e.message || "settings"); });
+        return;
+      }
+      STICKER_SETTINGS_LOADING = fetch(stickerSettingsUrl(), { method: "GET", credentials: "omit" })
+        .then(function (res) {
+          return readResponseAsJson(res, "Sticker settings");
+        })
+        .then(function (data) {
+          STICKER_SETTINGS_LOADING = null;
+          if (data && data.error) {
+            throw new Error(String(data.error));
+          }
+          STICKER_SHOP_SETTINGS = data;
+          if (callback) callback(null);
+        })
+        .catch(function (e) {
+          STICKER_SETTINGS_LOADING = null;
+          if (callback) callback(e.message || "Could not load sticker settings");
+        });
+    }
+    function applyDefaultFinishLamination(payload) {
+      if (!payload || typeof payload !== "object") return;
+      var d = (STICKER_SHOP_SETTINGS && STICKER_SHOP_SETTINGS.defaults) ? STICKER_SHOP_SETTINGS.defaults : {};
+      if (payload.finish == null || payload.finish === "") payload.finish = d.finish || "glossy";
+      if (payload.lamination == null || payload.lamination === "") payload.lamination = d.lamination || "none";
+    }
+    function maxQuantityFromSettings() {
+      var fallback = 1000;
+      try {
+        var opts = STICKER_SHOP_SETTINGS && STICKER_SHOP_SETTINGS.pricing && STICKER_SHOP_SETTINGS.pricing.quantityOptions;
+        if (opts && opts.length) {
+          var nums = opts.map(function (n) { return Number(n); }).filter(function (x) { return !Number.isNaN(x); });
+          if (nums.length) return Math.max.apply(null, nums);
+        }
+      } catch (e) {}
+      return fallback;
+    }
+
+    const productHandle = "{{ product.handle }}";
+    const variantId = "{{ product.selected_or_first_available_variant.id }}";
+    const customerId = "{{ customer.id }}";
+    const customerEmail = "{{ customer.email }}";
+
+    const customVariantIdEl = document.getElementById("sticker-designer-custom-variant-id");
+    const customVariantId = (function () {
+      if (!customVariantIdEl || !customVariantIdEl.textContent) return null;
+      try {
+        const v = JSON.parse(customVariantIdEl.textContent.trim());
+        return (v != null && v !== "") ? String(v) : null;
+      } catch (e) {
+        return null;
+      }
+    })();
+
+    const variantMapEl = document.getElementById("sticker-designer-variant-map");
+    const variantMap = (function () {
+      if (!variantMapEl || !variantMapEl.textContent) return {};
+      try {
+        const arr = JSON.parse(variantMapEl.textContent);
+        const out = {};
+        (arr || []).forEach(function (v) {
+          if (v.key != null) out[String(v.key).trim()] = v.id;
+        });
+        return out;
+      } catch (e) {
+        return {};
+      }
+    })();
+    function buildVariantKey(size, qty) {
+      var s = size != null ? Number(size) : NaN;
+      var q = qty != null ? Number(qty) : NaN;
+      if (Number.isNaN(s) || Number.isNaN(q)) return null;
+      var sizeStr = s + "x" + s;
+      return sizeStr + " \u00B7 " + q;
+    }
+    function findVariantId(stickerSize, quantity) {
+      if (Object.keys(variantMap).length === 0) return null;
+      var key = buildVariantKey(stickerSize, quantity);
+      if (key && variantMap[key] != null) return variantMap[key];
+      var sizeRounded = Math.round(Number(stickerSize));
+      if (!Number.isNaN(sizeRounded)) {
+        key = buildVariantKey(sizeRounded, quantity);
+        if (key && variantMap[key] != null) return variantMap[key];
+      }
+      var s = Number(stickerSize);
+      var q = Number(quantity);
+      if (!Number.isNaN(s) && !Number.isNaN(q)) {
+        key = s + "x" + s + " \u2022 " + q;
+        if (variantMap[key] != null) return variantMap[key];
+      }
+      return null;
+    }
+
+    const statusEl = document.getElementById("sticker-designer-status");
+    const buttonEl = document.getElementById("design-now-btn");
+    const modalEl = document.getElementById("sticker-designer-modal");
+    if (modalEl && modalEl.parentNode !== document.body) {
+      document.body.appendChild(modalEl);
+    }
+    const backdropEl = document.getElementById("sticker-designer-backdrop");
+    const frameEl = document.getElementById("sticker-designer-frame");
+    const libraryEl = document.getElementById("sticker-designs-library");
+    const previewEl = document.getElementById("sticker-designer-preview");
+    const previewImgEl = document.getElementById("sticker-designer-preview-image");
+    const downloadsEl = document.getElementById("sticker-designer-downloads");
+
+    function isSafeDownloadUrl(url) {
+      if (!url || typeof url !== "string") return false;
+      try {
+        var u = new URL(url.trim());
+        return u.protocol === "https:";
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function setDownloadLinks(designUrl, rawImageUrl) {
+      if (!downloadsEl) return;
+      if (!isSafeDownloadUrl(designUrl) && !isSafeDownloadUrl(rawImageUrl)) {
+        downloadsEl.style.display = "none";
+        downloadsEl.innerHTML = "";
+        return;
+      }
+      var parts = [];
+      if (isSafeDownloadUrl(designUrl)) {
+        parts.push("<a href=\"" + designUrl.replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"margin-right:12px;\">Download design file</a>");
+      }
+      if (isSafeDownloadUrl(rawImageUrl)) {
+        parts.push("<a href=\"" + rawImageUrl.replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener noreferrer\">Download original image</a>");
+      }
+      downloadsEl.innerHTML = parts.join("");
+      downloadsEl.style.display = "block";
+    }
+
+    const getProductForm = () =>
+      document.querySelector('form[action^="/cart/add"]');
+
+    const ensurePropertyInput = (form, name) => {
+      let input = form.querySelector(`input[name="properties[${name}]"]`);
+      if (!input) {
+        input = document.createElement("input");
+        input.type = "hidden";
+        input.name = `properties[${name}]`;
+        form.appendChild(input);
+      }
+      return input;
+    };
+
+    const setDesignProperties = (payload) => {
+      const p = payload || {};
+      applyDefaultFinishLamination(p);
+      const {
+        referenceCode,
+        designUrl,
+        rawImageUrl,
+        stickerSize,
+        quantity,
+        outlineType,
+        imageName,
+        finish,
+        lamination
+      } = p;
+
+      const form = getProductForm();
+      if (!form) {
+        statusEl.textContent =
+          "Design saved. Add to cart from the product form to include it.";
+        return;
+      }
+
+      if (referenceCode) {
+        ensurePropertyInput(form, "Reference_Code").value = referenceCode;
+      }
+      if (designUrl) {
+        ensurePropertyInput(form, "_Design_URL").value = designUrl;
+      }
+      if (stickerSize) {
+        const sizeVal = typeof stickerSize === "number" ? stickerSize + '"' : (String(stickerSize).indexOf('"') >= 0 ? stickerSize : stickerSize + '"');
+        ensurePropertyInput(form, "Sticker_Size").value = sizeVal;
+      }
+      if (quantity) {
+        ensurePropertyInput(form, "Quantity").value = String(quantity);
+      }
+      if (outlineType) {
+        ensurePropertyInput(form, "Outline_Type").value = outlineType;
+      }
+      if (imageName) {
+        ensurePropertyInput(form, "Image_Name").value = imageName;
+      }
+      if (rawImageUrl) {
+        ensurePropertyInput(form, "_Original_Image_URL").value = rawImageUrl;
+      }
+      if (p.finish) {
+        ensurePropertyInput(form, "Finish").value = String(p.finish);
+      }
+      if (p.lamination) {
+        ensurePropertyInput(form, "Lamination").value = String(p.lamination);
+      }
+
+      var matchedVariantId = findVariantId(stickerSize, quantity);
+      if (matchedVariantId != null) {
+        var idInput = form.querySelector('input[name="id"]');
+        if (idInput) {
+          idInput.value = String(matchedVariantId);
+          idInput.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+
+      var previewSrc = rawImageUrl || designUrl;
+      if (previewSrc && previewEl && previewImgEl) {
+        previewImgEl.src = previewSrc;
+        previewImgEl.onerror = function () { previewEl.style.display = "none"; };
+        previewEl.style.display = "block";
+      }
+
+      const details = [];
+      if (referenceCode) details.push(`Ref: ${referenceCode}`);
+      if (stickerSize) details.push(`Size: ${stickerSize}`);
+      if (quantity) details.push(`Qty: ${quantity}`);
+      statusEl.textContent = details.length
+        ? `Design selected. ${details.join(" · ")}`
+        : "Design selected.";
+      buttonEl.textContent = "Design Selected";
+    };
+
+    const createDraftOrder = (payload, useVariantId) => {
+      const p = payload || {};
+      applyDefaultFinishLamination(p);
+      const {
+        referenceCode,
+        designUrl,
+        rawImageUrl,
+        stickerSize,
+        quantity,
+        outlineType,
+        imageName,
+        finish,
+        lamination
+      } = p;
+
+      const sizeNum = stickerSize != null ? (Number(stickerSize) || parseStickerSizeNumber(stickerSize)) : NaN;
+      const dims = parseStickerSizeDimensions(stickerSize);
+      const qtyNum = quantity != null ? Number(quantity) : NaN;
+      const properties = {};
+      if (referenceCode) properties.Reference_Code = String(referenceCode);
+      if (designUrl) properties._Design_URL = String(designUrl);
+      if (stickerSize != null) {
+        const sizeVal = typeof stickerSize === "number" ? stickerSize + '"' : (String(stickerSize).indexOf('"') >= 0 ? stickerSize : stickerSize + '"');
+        properties.Sticker_Size = sizeVal;
+      }
+      if (quantity != null) properties.Quantity = String(quantity);
+      if (outlineType) properties.Outline_Type = String(outlineType);
+      if (imageName) properties.Image_Name = String(imageName);
+      if (rawImageUrl) properties._Original_Image_URL = String(rawImageUrl);
+      if (p.finish) properties.Finish = String(p.finish);
+      if (p.lamination) properties.Lamination = String(p.lamination);
+
+      const variantToUse = useVariantId != null ? useVariantId : customVariantId;
+      if (variantToUse == null) {
+        return Promise.reject(new Error("No variant available for draft order. Add a \"Custom Size\" variant to this product."));
+      }
+      const url = (function () {
+        var path = DRAFT_ORDER_PATH;
+        if (path.indexOf("/") === 0) return getStorefrontOrigin() + path;
+        return path;
+      })();
+      return fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({
+          variantId: String(variantToUse),
+          quantity: 1,
+          stickerSize: Number.isNaN(sizeNum) ? 2 : sizeNum,
+          quantityOption: Number.isNaN(qtyNum) ? 50 : Math.max(1, Math.min(maxQuantityFromSettings(), qtyNum)),
+          widthIn: dims.width,
+          heightIn: dims.height,
+          finish: p.finish ? String(p.finish) : undefined,
+          lamination: p.lamination ? String(p.lamination) : undefined,
+          properties: properties
+        })
+      })
+        .then(function (res) {
+          return readResponseAsJson(res, "Create draft order").then(function (data) {
+            return { ok: res.ok, data: data };
+          });
+        })
+        .then(function (_ref) {
+          var ok = _ref.ok;
+          var data = _ref.data;
+          if (!ok && data && data.error) {
+            throw new Error(data.error);
+          }
+          if (data && data.checkoutUrl) {
+            return { checkoutUrl: data.checkoutUrl };
+          }
+          throw new Error(data && data.error ? data.error : "Could not create order.");
+        });
+    };
+
+    const addToCartAndRedirect = (payload) => {
+      const p = payload || {};
+      applyDefaultFinishLamination(p);
+      const {
+        referenceCode,
+        designUrl,
+        rawImageUrl,
+        stickerSize,
+        quantity,
+        outlineType,
+        imageName,
+        finish,
+        lamination
+      } = p;
+
+      const matchedVariantId = findVariantId(stickerSize, quantity);
+      if (matchedVariantId != null) {
+        var sizeVal = stickerSize != null
+          ? (typeof stickerSize === "number" ? stickerSize + '"' : (String(stickerSize).indexOf('"') >= 0 ? stickerSize : stickerSize + '"'))
+          : "";
+        const properties = {};
+        if (referenceCode) properties.Reference_Code = String(referenceCode);
+        if (sizeVal) properties.Sticker_Size = sizeVal;
+        if (quantity != null) properties.Quantity = String(quantity);
+        if (outlineType) properties.Outline_Type = String(outlineType);
+        if (imageName) properties.Image_Name = String(imageName);
+        if (designUrl) properties._Design_URL = String(designUrl);
+        if (rawImageUrl) properties._Original_Image_URL = String(rawImageUrl);
+        if (p.finish) properties.Finish = String(p.finish);
+        if (p.lamination) properties.Lamination = String(p.lamination);
+
+        statusEl.textContent = "Adding to cart…";
+
+        fetch("/cart/add.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            items: [{
+              id: matchedVariantId,
+              quantity: 1,
+              properties: properties
+            }]
+          })
+        })
+          .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+          .then(({ ok, data }) => {
+            if (!ok && data && data.description) {
+              statusEl.textContent = data.description || "Could not add to cart.";
+              return;
+            }
+            if (data && data.message && data.status !== 200) {
+              statusEl.textContent = data.message;
+              return;
+            }
+            closeModal();
+            window.location.href = "/cart";
+          })
+          .catch(() => {
+            statusEl.textContent = "Could not add to cart. Please try again.";
+          });
+        return;
+      }
+
+      if (customVariantId != null) {
+        statusEl.textContent = "Creating draft order…";
+        setDesignProperties(payload);
+        createDraftOrder(payload)
+          .then(function (res) {
+            if (statusEl) statusEl.textContent = "Redirecting to checkout…";
+            closeModal();
+            window.location.href = res.checkoutUrl;
+          })
+          .catch(function (err) {
+            statusEl.textContent = err.message || "Could not create order. Please try again.";
+          });
+        return;
+      }
+
+      statusEl.textContent = "This size or quantity is not available. Add a \"Custom Size\" variant (price $0) to this product to enable custom size/quantity via draft order.";
+    };
+
+    function parseStickerSizeNumber(val) {
+      if (val == null) return NaN;
+      var n = Number(val);
+      if (!Number.isNaN(n)) return n;
+      var match = String(val).match(/[\d.]+/);
+      return match ? Number(match[0]) : NaN;
+    }
+
+    /** Parse sticker size into width/height (inches). "2x3" -> { width: 2, height: 3 }; "2" or 2 -> { width: 2, height: 2 }. */
+    function parseStickerSizeDimensions(val) {
+      if (val == null) return { width: 2, height: 2 };
+      var n = Number(val);
+      if (!Number.isNaN(n) && n > 0) return { width: n, height: n };
+      var str = String(val).trim();
+      var match = str.match(/^([\d.]+)\s*[xX×]\s*([\d.]+)$/);
+      if (match) {
+        var w = Number(match[1]);
+        var h = Number(match[2]);
+        if (!Number.isNaN(w) && !Number.isNaN(h) && w > 0 && h > 0) return { width: w, height: h };
+      }
+      var single = parseStickerSizeNumber(val);
+      return { width: Number.isNaN(single) ? 2 : single, height: Number.isNaN(single) ? 2 : single };
+    }
+
+    /** Read design params from URL. Supports designer app redirect: product URL with properties[Sticker_Size], properties[Quantity], properties[Design_URL], etc. */
+    const getDesignParams = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(
+        window.location.hash.replace(/^#\??/, "")
+      );
+
+      const getParam = (key) => searchParams.get(key) || hashParams.get(key);
+      const getPropertyParam = (key) =>
+        getParam(`properties[${key}]`) ||
+        getParam(`properties[${key.toLowerCase()}]`);
+
+      return {
+        referenceCode:
+          getParam("designReference") ||
+          getParam("referenceCode") ||
+          getParam("reference") ||
+          getParam("design_ref") ||
+          getParam("ref") ||
+          getPropertyParam("Reference_Code"),
+        designUrl:
+          getParam("designUrl") ||
+          getParam("design_url") ||
+          getParam("url") ||
+          getPropertyParam("Design_URL") ||
+          getPropertyParam("_Design_URL"),
+        stickerSize:
+          getParam("stickerSize") ||
+          getParam("sticker_size") ||
+          getPropertyParam("Sticker_Size"),
+        quantity:
+          getParam("quantity") ||
+          getParam("qty") ||
+          getPropertyParam("Quantity"),
+        outlineType:
+          getParam("outlineType") ||
+          getParam("outline_type") ||
+          getPropertyParam("Outline_Type"),
+        imageName:
+          getParam("imageName") ||
+          getParam("image_name") ||
+          getPropertyParam("Image_Name"),
+        finish:
+          getParam("finish") ||
+          getParam("finishType") ||
+          getPropertyParam("Finish"),
+        lamination:
+          getParam("lamination") ||
+          getParam("laminate") ||
+          getPropertyParam("Lamination")
+      };
+    };
+
+    const parseDesignFromUrl = () => {
+      const params = getDesignParams();
+      if (
+        !params.referenceCode &&
+        !params.designUrl &&
+        !params.stickerSize &&
+        !params.quantity &&
+        !params.outlineType &&
+        !params.imageName &&
+        !params.finish &&
+        !params.lamination
+      ) {
+        return;
+      }
+
+      setDesignProperties(params);
+
+      var sizeForVariant = parseStickerSizeNumber(params.stickerSize);
+      var qtyForVariant = params.quantity != null ? Number(params.quantity) : NaN;
+      var matchedVariantId = findVariantId(sizeForVariant, params.quantity);
+
+      if (matchedVariantId != null) {
+        return;
+      }
+
+      if (customVariantId != null) {
+        var payload = {
+          referenceCode: params.referenceCode,
+          designUrl: params.designUrl,
+          rawImageUrl: null,
+          stickerSize: Number.isNaN(sizeForVariant) ? params.stickerSize : sizeForVariant,
+          quantity: params.quantity,
+          outlineType: params.outlineType,
+          imageName: params.imageName,
+          finish: params.finish,
+          lamination: params.lamination
+        };
+        statusEl.textContent = "Creating draft order…";
+        createDraftOrder(payload)
+          .then(function (res) {
+            if (statusEl) statusEl.textContent = "Redirecting to checkout…";
+            window.location.href = res.checkoutUrl;
+          })
+          .catch(function (err) {
+            statusEl.textContent = err.message || "Could not create order. Please try again.";
+          });
+      }
+    };
+
+    function fetchDesignByReference(referenceCode, callback) {
+      if (!referenceCode || !customerId) {
+        callback(null);
+        return;
+      }
+
+      try {
+        var proxyBase =
+          (DRAFT_ORDER_PATH || "/apps/custom-stickers/create-draft")
+            .replace(/\/create-draft\/?$/, "") || "/apps/custom-stickers";
+        var listUrl =
+          getStorefrontOrigin() +
+          proxyBase +
+          "/designs?customerId=" +
+          encodeURIComponent(customerId) +
+          "&designerOrigin=" +
+          encodeURIComponent(DESIGN_ORIGIN);
+
+        fetch(listUrl, { method: "GET", credentials: "omit" })
+          .then(function (res) {
+            return readResponseAsJson(res, "Designs list");
+          })
+          .then(function (data) {
+            var designs = (data && data.designs) || [];
+            var match = null;
+            for (var i = 0; i < designs.length; i++) {
+              var d = designs[i] || {};
+              var ref =
+                d.referenceCode ||
+                d.reference_code ||
+                d.reference ||
+                d.ref ||
+                null;
+              if (ref && String(ref) === String(referenceCode)) {
+                match = d;
+                break;
+              }
+            }
+            callback(match);
+          })
+          .catch(function () {
+            callback(null);
+          });
+      } catch (e) {
+        callback(null);
+      }
+    }
+
+    const handleMessage = (event) => {
+      if (event.origin !== DESIGN_ORIGIN) return;
+      let data = event.data || {};
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch (error) {
+          return;
+        }
+      }
+      // Accept both the original "stickerDesignReady" message and a generic "send-design" message
+      if (data && (data.type === "stickerDesignReady" || data.type === "send-design")) {
+        const payload = {
+          referenceCode: data.referenceCode || data.reference || data.ref,
+          designUrl:
+            data.designUrl ||
+            data.Design_URL ||
+            data.DesignUrl ||
+            data.url ||
+            data.design_url,
+          rawImageUrl: data.rawImageUrl || data.raw_image_url || null,
+          stickerSize: data.stickerSize || data.size || data.sticker_size,
+          quantity: data.quantity || data.qty,
+          outlineType: data.outlineType || data.outline_type,
+          imageName: data.imageName || data.image_name,
+          finish: data.finish || data.finishType,
+          lamination: data.lamination || data.laminate || data.laminateType
+        };
+        if (!payload.designUrl && payload.referenceCode && customerId) {
+          fetchDesignByReference(payload.referenceCode, function (design) {
+            if (design) {
+              if (!payload.designUrl) {
+                payload.designUrl =
+                  design.designUrl ||
+                  design.Design_URL ||
+                  design._Design_URL ||
+                  design.DesignUrl ||
+                  design.design_url ||
+                  design.url ||
+                  null;
+              }
+              if (!payload.rawImageUrl) {
+                payload.rawImageUrl =
+                  design.rawImageUrl ||
+                  design.raw_image_url ||
+                  design.previewUrl ||
+                  design.preview_url ||
+                  design.Preview_Image ||
+                  null;
+              }
+            }
+            setDesignProperties(payload);
+            addToCartAndRedirect(payload);
+            loadDesignLibrary();
+          });
+          
+        } else {
+          setDesignProperties(payload);
+          addToCartAndRedirect(payload);
+          loadDesignLibrary();
+        }
+      }
+    };
+
+    const openModal = (url) => {
+      if (!modalEl || !frameEl) return;
+      frameEl.src = url;
+      modalEl.style.display = "block";
+      modalEl.setAttribute("aria-hidden", "false");
+      document.documentElement.style.overflow = "hidden";
+      
+    };
+
+    const closeModal = () => {
+      if (!modalEl) return;
+      modalEl.style.display = "none";
+      modalEl.setAttribute("aria-hidden", "true");
+      document.documentElement.style.overflow = "";
+    };
+
+    const buildDesignerUrl = (params) => {
+      const url = new URL(DESIGN_PATH, DESIGN_ORIGIN);
+      url.searchParams.set("embed", "1");
+      url.searchParams.set("parentOrigin", getStorefrontOrigin());
+      url.searchParams.set("returnUrl", window.location.href);
+      url.searchParams.set("variantId", variantId);
+      url.searchParams.set("productHandle", productHandle);
+      if (customerId) url.searchParams.set("customerId", customerId);
+      if (customerEmail) url.searchParams.set("customerEmail", customerEmail);
+
+      if (typeof STICKER_SHOP_SETTINGS === "object" && STICKER_SHOP_SETTINGS && STICKER_SHOP_SETTINGS.version) {
+        try {
+          var json = JSON.stringify(STICKER_SHOP_SETTINGS);
+          if (json.length < 1800) {
+            url.searchParams.set("shopStickerSettings", json);
+          }
+        } catch (e2) {}
+      }
+
+      if (params) {
+        Object.keys(params).forEach((key) => {
+          if (params[key] !== undefined && params[key] !== null) {
+            url.searchParams.set(key, params[key]);
+          }
+        });
+      }
+
+      return url.toString();
+    };
+
+    const renderDesignLibrary = (designs) => {
+      if (!libraryEl) return;
+      if (!designs || designs.length === 0) {
+        libraryEl.innerHTML = "<div style='font-size:14px;color:#555;'>No saved designs yet.</div>";
+        return;
+      }
+
+      const items = designs.map((design) => {
+        const preview = design.rawImageUrl || "";
+        const title = design.imageName || "Sticker Design";
+        const dateText = design.createdAt ? new Date(design.createdAt).toLocaleDateString() : "";
+        return `
+          <div style="display:flex;gap:12px;align-items:center;border:1px solid #e1e3e5;border-radius:10px;padding:10px;margin-bottom:8px;">
+            <div style="width:64px;height:64px;border:1px solid #eee;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fafafa;">
+              ${preview ? `<img src="${preview}" alt="${title}" style="width:100%;height:100%;object-fit:cover;" />` : "<span style='font-size:12px;color:#999;'>No preview</span>"}
+            </div>
+            <div style="flex:1;">
+              <div style="font-weight:600;">${title}</div>
+              <div style="font-size:12px;color:#666;margin-top:2px;">
+                ${design.referenceCode ? `Ref: ${design.referenceCode}` : ""}${dateText ? ` · ${dateText}` : ""}
+              </div>
+              <div style="font-size:12px;color:#666;margin-top:2px;">
+                ${design.stickerSize ? `Size: ${design.stickerSize}` : ""}${design.quantity ? ` · Qty: ${design.quantity}` : ""}${design.outlineType ? ` · ${design.outlineType}` : ""}
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button data-action="use" data-ref="${design.referenceCode || ""}" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;">Use</button>
+              <button data-action="edit" data-image="${preview}" data-size="${design.stickerSize || ""}" data-qty="${design.quantity || ""}" data-outline="${design.outlineType || ""}" data-name="${design.imageName || ""}" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;">Edit</button>
+            </div>
+          </div>
+        `;
+      });
+
+      libraryEl.innerHTML = `
+        <div style="margin-top:16px;">
+          <div style="font-weight:600;margin-bottom:8px;">My Designs</div>
+          ${items.join("")}
+        </div>
+      `;
+
+      libraryEl.querySelectorAll("button[data-action='use']").forEach((button) => {
+        button.addEventListener("click", () => {
+          const ref = button.getAttribute("data-ref");
+          const design = designs.find((d) => d.referenceCode === ref);
+          if (design) {
+            setDesignProperties({
+              referenceCode: design.referenceCode,
+              designUrl: design.designUrl,
+              rawImageUrl: design.rawImageUrl || null,
+              stickerSize: design.stickerSize,
+              quantity: design.quantity,
+              outlineType: design.outlineType,
+              imageName: design.imageName
+            });
+          }
+        });
+      });
+
+      libraryEl.querySelectorAll("button[data-action='edit']").forEach((button) => {
+        button.addEventListener("click", () => {
+          fetchStickerShopSettings(function () {
+            const url = buildDesignerUrl({
+              designImageUrl: button.getAttribute("data-image") || "",
+              stickerSize: button.getAttribute("data-size") || "",
+              quantity: button.getAttribute("data-qty") || "",
+              outlineType: button.getAttribute("data-outline") || "",
+              imageName: button.getAttribute("data-name") || ""
+            });
+            openModal(url);
+          });
+        });
+      });
+    };
+
+    const loadDesignLibrary = () => {
+      if (!libraryEl) return;
+      if (!customerId) {
+        libraryEl.innerHTML =
+          "<div style='font-size:14px;color:#555;'>Log in to see your saved designs.</div>";
+        return;
+      }
+
+      libraryEl.innerHTML = "<div style='font-size:14px;color:#555;'>Loading your designs...</div>";
+      var proxyBase = (DRAFT_ORDER_PATH || "/apps/custom-stickers/create-draft").replace(/\/create-draft\/?$/, "") || "/apps/custom-stickers";
+      var listUrl = getStorefrontOrigin() + proxyBase + "/designs?customerId=" + encodeURIComponent(customerId) + "&designerOrigin=" + encodeURIComponent(DESIGN_ORIGIN);
+      fetch(listUrl, { method: "GET", credentials: "omit" })
+        .then(function (res) {
+          return readResponseAsJson(res, "Designs list");
+        })
+        .then(function (data) {
+          renderDesignLibrary((data && data.designs) || []);
+        })
+        .catch(() => {
+          libraryEl.innerHTML = "<div style='font-size:14px;color:#c00;'>Unable to load designs.</div>";
+        });
+    };
+
+    if (buttonEl) {
+      buttonEl.addEventListener("click", function () {
+        fetchStickerShopSettings(function (err) {
+          const url = buildDesignerUrl();
+          openModal(url);
+          statusEl.textContent = err
+            ? "Designer opened (could not load shop settings: " + err + ")."
+            : "Designer opened. Complete your design in the modal.";
+        });
+      });
+    }
+
+    if (backdropEl) {
+      backdropEl.addEventListener("click", closeModal);
+    }
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") closeModal();
+    });
+
+    window.addEventListener("message", handleMessage, false);
+    fetchStickerShopSettings(function () {});
+    parseDesignFromUrl();
+    loadDesignLibrary();
+
+    function hideCustomVariantFromSelector() {
+      var blockEl = document.getElementById("sticker-designer-block");
+      var label = blockEl && blockEl.getAttribute("data-hide-variant-label");
+      if (!label || !label.trim()) return;
+
+      var form = getProductForm();
+      var root = form ? form.closest(".product") || form.closest("[data-product]") || document.body : document.body;
+
+      root.querySelectorAll('select[name*="option"], select[id*="variant"], select[data-option-index]').forEach(function (sel) {
+        var opt = Array.prototype.find.call(sel.options, function (o) { return (o.value || o.textContent || "").trim() === label; });
+        if (opt) {
+          opt.style.display = "none";
+          opt.disabled = true;
+          opt.setAttribute("aria-hidden", "true");
+          if (sel.value === opt.value) {
+            var firstVisible = Array.prototype.find.call(sel.options, function (o) { return o !== opt && !o.disabled && o.value !== ""; });
+            if (firstVisible) { sel.value = firstVisible.value; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+          }
+        }
+      });
+
+      root.querySelectorAll('input[type="radio"][name*="option"], input[type="radio"][data-option-index]').forEach(function (input) {
+        if ((input.value || "").trim() !== label) return;
+        var wrap = input.closest("label") || input.closest("fieldset") || input.closest(".variant-option") || input.parentElement;
+        if (wrap) {
+          wrap.style.display = "none";
+          wrap.setAttribute("aria-hidden", "true");
+        }
+        input.disabled = true;
+        if (input.checked) {
+          var firstOther = root.querySelector('input[type="radio"][name="' + input.name + '"]:not([disabled])');
+          if (firstOther) { firstOther.checked = true; firstOther.dispatchEvent(new Event("change", { bubbles: true })); }
+        }
+      });
+
+      root.querySelectorAll('[data-value], [data-option-value]').forEach(function (el) {
+        var val = (el.getAttribute("data-value") || el.getAttribute("data-option-value") || el.textContent || "").trim();
+        if (val === label) {
+          el.style.display = "none";
+          el.setAttribute("aria-hidden", "true");
+        }
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", hideCustomVariantFromSelector);
+    } else {
+      hideCustomVariantFromSelector();
+    }
+    setTimeout(hideCustomVariantFromSelector, 500);
+  })();
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Sticker Designer",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "product_tag",
+      "label": "Show only for products with tag",
+      "default": "Sticker Designer",
+      "info": "The Design Now block is shown only on product pages where the product has this tag. Leave default or change to match your tag."
+    },
+    {
+      "type": "url",
+      "id": "designer_url",
+      "label": "Designer URL",
+      "info": "Optional. Use your own domain for the designer (e.g. https://designer.yourstore.com) so your brand shows in the iframe. Leave blank to use the default."
+    },
+    {
+      "type": "text",
+      "id": "hide_variant_label",
+      "label": "Custom variant option label",
+      "default": "Custom Size",
+      "info": "Product option value for the variant used only for custom size/quantity draft orders (e.g. \"Custom Size\"). That variant is hidden from the size selector."
+    },
+    {
+      "type": "text",
+      "id": "draft_order_path",
+      "label": "Draft order path",
+      "default": "/apps/custom-stickers/create-draft",
+      "info": "Store path that creates draft orders for custom size/quantity. Change only if you use a different app proxy path."
+    }
+  ]
+}
+{% endschema %}

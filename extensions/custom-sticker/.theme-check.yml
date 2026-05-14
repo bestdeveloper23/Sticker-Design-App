@@ -1,0 +1,5 @@
+# Theme Check config for Custom Sticker Designer extension
+extends: theme-check:theme-app-extension
+# RemoteAsset: disabled — snippet uses dynamic line-item image URL (design preview), not a theme asset
+RemoteAsset:
+  enabled: false
