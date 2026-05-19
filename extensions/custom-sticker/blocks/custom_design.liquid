@@ -109,7 +109,18 @@
     {%- if draft_path == blank -%}
       {%- assign draft_path = "/apps/custom-stickers/create-draft" -%}
     {%- endif -%}
+<<<<<<< HEAD
     const DRAFT_ORDER_PATH = {{ draft_path | json }};
+=======
+    {%- assign app_backend = block.settings.app_backend_url | strip -%}
+    {%- if app_backend == blank -%}
+      {%- assign app_backend = "https://anycontourapp.vercel.app" -%}
+    {%- endif -%}
+    const DRAFT_ORDER_PATH = {{ draft_path | json }};
+    var APP_BACKEND_ORIGIN = {{ app_backend | json }};
+    try { APP_BACKEND_ORIGIN = new URL(APP_BACKEND_ORIGIN).origin; } catch (eAb) {}
+    const SHOP_MYSHOPIFY_DOMAIN = {{ shop.permanent_domain | json }};
+>>>>>>> 2a982d2 (merged)
     {%- comment -%} Match the host that rendered this page (custom domain or .myshopify.com) so /apps/... proxy URLs always hit the same storefront hostname. {%- endcomment -%}
     {%- if request.origin != blank -%}
     var STOREFRONT_ORIGIN = {{ request.origin | json }};
@@ -124,6 +135,23 @@
       }
       return window.location.origin;
     }
+<<<<<<< HEAD
+=======
+    {%- comment -%} e.g. "/" or "/en/" — include locale so /apps/... matches Markets (avoids 302 + HTML instead of JSON). {%- endcomment -%}
+    var STORE_PATH_PREFIX = {{ routes.root_url | default: '/' | json }};
+    function getStoreLocalePathPrefix() {
+      if (typeof STORE_PATH_PREFIX !== "string") return "";
+      return STORE_PATH_PREFIX.replace(/^\/+|\/+$/g, "");
+    }
+    function storefrontAbsoluteUrl(path) {
+      var origin = getStorefrontOrigin();
+      var p = path == null || path === "" ? "/" : path;
+      if (p.charAt(0) !== "/") p = "/" + p;
+      var seg = getStoreLocalePathPrefix();
+      if (!seg) return origin + p;
+      return origin + "/" + seg + p;
+    }
+>>>>>>> 2a982d2 (merged)
     /** App proxy / errors sometimes return HTML; res.json() then throws "Unexpected token '<'". */
     function readResponseAsJson(res, label) {
       return res.text().then(function (text) {
@@ -156,9 +184,21 @@
     function stickerSettingsUrl() {
       var base = (DRAFT_ORDER_PATH || "/apps/custom-stickers/create-draft").replace(/\/create-draft\/?$/, "") || "/apps/custom-stickers";
       var path = base + "/settings";
+<<<<<<< HEAD
       if (path.indexOf("/") === 0) return getStorefrontOrigin() + path;
       return path;
     }
+=======
+      if (path.indexOf("/") === 0) return storefrontAbsoluteUrl(path);
+      return path;
+    }
+    /** App host URL for iframe fetch (CORS). Storefront proxy does not reliably expose CORS to Replit. */
+    function embedSettingsUrlForIframe() {
+      var shop = SHOP_MYSHOPIFY_DOMAIN || "";
+      if (!shop) return "";
+      return APP_BACKEND_ORIGIN + "/api/embed/settings?shop=" + encodeURIComponent(shop);
+    }
+>>>>>>> 2a982d2 (merged)
     function fetchStickerShopSettings(callback) {
       if (STICKER_SHOP_SETTINGS) {
         if (callback) callback(null);
@@ -168,7 +208,14 @@
         STICKER_SETTINGS_LOADING.then(function () { if (callback) callback(null); }).catch(function (e) { if (callback) callback(e.message || "settings"); });
         return;
       }
+<<<<<<< HEAD
       STICKER_SETTINGS_LOADING = fetch(stickerSettingsUrl(), { method: "GET", credentials: "omit" })
+=======
+      STICKER_SETTINGS_LOADING = fetch(stickerSettingsUrl(), {
+        method: "GET",
+        credentials: "omit",
+      })
+>>>>>>> 2a982d2 (merged)
         .then(function (res) {
           return readResponseAsJson(res, "Sticker settings");
         })
@@ -428,11 +475,19 @@
       }
       const url = (function () {
         var path = DRAFT_ORDER_PATH;
+<<<<<<< HEAD
         if (path.indexOf("/") === 0) return getStorefrontOrigin() + path;
+=======
+        if (path.indexOf("/") === 0) return storefrontAbsoluteUrl(path);
+>>>>>>> 2a982d2 (merged)
         return path;
       })();
       return fetch(url, {
         method: "POST",
+<<<<<<< HEAD
+=======
+        credentials: "omit",
+>>>>>>> 2a982d2 (merged)
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({
           variantId: String(variantToUse),
@@ -682,9 +737,14 @@
           (DRAFT_ORDER_PATH || "/apps/custom-stickers/create-draft")
             .replace(/\/create-draft\/?$/, "") || "/apps/custom-stickers";
         var listUrl =
+<<<<<<< HEAD
           getStorefrontOrigin() +
           proxyBase +
           "/designs?customerId=" +
+=======
+          storefrontAbsoluteUrl(proxyBase + "/designs") +
+          "?customerId=" +
+>>>>>>> 2a982d2 (merged)
           encodeURIComponent(customerId) +
           "&designerOrigin=" +
           encodeURIComponent(DESIGN_ORIGIN);
@@ -729,6 +789,17 @@
           return;
         }
       }
+<<<<<<< HEAD
+=======
+      if (
+        data &&
+        (data.type === "STICKER_EMBED_REQUEST_SETTINGS" ||
+          data.type === "stickerEmbedReady")
+      ) {
+        pushStickerShopSettingsToFrame();
+        return;
+      }
+>>>>>>> 2a982d2 (merged)
       // Accept both the original "stickerDesignReady" message and a generic "send-design" message
       if (data && (data.type === "stickerDesignReady" || data.type === "send-design")) {
         const payload = {
@@ -783,9 +854,43 @@
       }
     };
 
+<<<<<<< HEAD
     const openModal = (url) => {
       if (!modalEl || !frameEl) return;
       frameEl.src = url;
+=======
+    /**
+     * Primary: postMessage full JSON (no URL size limits). Types: stickerShopSettings (canonical)
+     * and SHOP_STICKER_SETTINGS (legacy). Secondary: settingsUrl query lets the iframe fetch
+     * the same storefront URL if CORS is enabled on GET /settings for ALLOWED_DESIGNER_ORIGINS.
+     */
+    function pushStickerShopSettingsToFrame() {
+      try {
+        var s = STICKER_SHOP_SETTINGS;
+        if (!s || typeof s !== "object" || typeof s.version !== "number") return;
+        if (!frameEl || !frameEl.contentWindow) return;
+        var msg = { type: "stickerShopSettings", settings: s };
+        frameEl.contentWindow.postMessage(msg, DESIGN_ORIGIN);
+        frameEl.contentWindow.postMessage(
+          { type: "SHOP_STICKER_SETTINGS", settings: s },
+          DESIGN_ORIGIN
+        );
+      } catch (ePush) {}
+    }
+
+    const openModal = (url) => {
+      if (!modalEl || !frameEl) return;
+      var pushAfterLoad = function () {
+        pushStickerShopSettingsToFrame();
+        setTimeout(pushStickerShopSettingsToFrame, 250);
+        setTimeout(pushStickerShopSettingsToFrame, 1200);
+      };
+      frameEl.onload = function () {
+        pushAfterLoad();
+      };
+      var bust = (url.indexOf("?") >= 0 ? "&" : "?") + "_embedTs=" + Date.now();
+      frameEl.src = url + bust;
+>>>>>>> 2a982d2 (merged)
       modalEl.style.display = "block";
       modalEl.setAttribute("aria-hidden", "false");
       document.documentElement.style.overflow = "hidden";
@@ -802,13 +907,18 @@
     const buildDesignerUrl = (params) => {
       const url = new URL(DESIGN_PATH, DESIGN_ORIGIN);
       url.searchParams.set("embed", "1");
+<<<<<<< HEAD
       url.searchParams.set("parentOrigin", getStorefrontOrigin());
+=======
+      url.searchParams.set("parentOrigin", window.location.origin);
+>>>>>>> 2a982d2 (merged)
       url.searchParams.set("returnUrl", window.location.href);
       url.searchParams.set("variantId", variantId);
       url.searchParams.set("productHandle", productHandle);
       if (customerId) url.searchParams.set("customerId", customerId);
       if (customerEmail) url.searchParams.set("customerEmail", customerEmail);
 
+<<<<<<< HEAD
       if (typeof STICKER_SHOP_SETTINGS === "object" && STICKER_SHOP_SETTINGS && STICKER_SHOP_SETTINGS.version) {
         try {
           var json = JSON.stringify(STICKER_SHOP_SETTINGS);
@@ -817,6 +927,12 @@
           }
         } catch (e2) {}
       }
+=======
+      try {
+        var embedSu = embedSettingsUrlForIframe();
+        if (embedSu) url.searchParams.set("settingsUrl", embedSu);
+      } catch (eSu) {}
+>>>>>>> 2a982d2 (merged)
 
       if (params) {
         Object.keys(params).forEach((key) => {
@@ -913,7 +1029,16 @@
 
       libraryEl.innerHTML = "<div style='font-size:14px;color:#555;'>Loading your designs...</div>";
       var proxyBase = (DRAFT_ORDER_PATH || "/apps/custom-stickers/create-draft").replace(/\/create-draft\/?$/, "") || "/apps/custom-stickers";
+<<<<<<< HEAD
       var listUrl = getStorefrontOrigin() + proxyBase + "/designs?customerId=" + encodeURIComponent(customerId) + "&designerOrigin=" + encodeURIComponent(DESIGN_ORIGIN);
+=======
+      var listUrl =
+        storefrontAbsoluteUrl(proxyBase + "/designs") +
+        "?customerId=" +
+        encodeURIComponent(customerId) +
+        "&designerOrigin=" +
+        encodeURIComponent(DESIGN_ORIGIN);
+>>>>>>> 2a982d2 (merged)
       fetch(listUrl, { method: "GET", credentials: "omit" })
         .then(function (res) {
           return readResponseAsJson(res, "Designs list");
@@ -1035,6 +1160,16 @@
       "label": "Draft order path",
       "default": "/apps/custom-stickers/create-draft",
       "info": "Store path that creates draft orders for custom size/quantity. Change only if you use a different app proxy path."
+<<<<<<< HEAD
+=======
+    },
+    {
+      "type": "text",
+      "id": "app_backend_url",
+      "label": "App backend URL",
+      "default": "https://anycontourapp.vercel.app",
+      "info": "Your Shopify app server URL (same as Partner Dashboard application URL). Used for designer settings CORS fetch, not the storefront /apps/... path."
+>>>>>>> 2a982d2 (merged)
     }
   ]
 }

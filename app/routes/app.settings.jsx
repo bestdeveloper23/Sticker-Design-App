@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
+<<<<<<< HEAD
 import {
   useFetcher,
   useLoaderData,
   redirect,
 } from "react-router";
+=======
+import { useFetcher, useLoaderData } from "react-router";
+>>>>>>> 2a982d2 (merged)
 import { authenticate } from "../shopify.server";
 import { ensureBillingSubscription } from "../billing.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -13,6 +17,7 @@ import {
   saveShopStickerSettings,
 } from "../sticker-settings.server";
 
+<<<<<<< HEAD
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
@@ -27,6 +32,16 @@ export const loader = async ({ request }) => {
   }
   const settings = await getOrCreateShopStickerSettings(shop);
   return { billingSetupFailed: false, settings };
+=======
+export const config = { runtime: "nodejs" };
+
+export const loader = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
+  await ensureBillingSubscription(shop);
+  const settings = await getOrCreateShopStickerSettings(shop);
+  return { settings };
+>>>>>>> 2a982d2 (merged)
 };
 
 export const action = async ({ request }) => {
@@ -148,6 +163,7 @@ export default function StickerSettingsPage() {
           </s-paragraph>
         </s-section>
 
+<<<<<<< HEAD
         {loaderData.billingSetupFailed && (
           <div
             role="alert"
@@ -166,6 +182,8 @@ export default function StickerSettingsPage() {
           </div>
         )}
 
+=======
+>>>>>>> 2a982d2 (merged)
         {err && (
           <div
             role="alert"

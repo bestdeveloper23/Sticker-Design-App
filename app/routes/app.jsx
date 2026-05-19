@@ -3,6 +3,12 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 
+<<<<<<< HEAD
+=======
+/** Same Node bundle as /app/* children so Vercel traces `react-router` for embedded admin routes. */
+export const config = { runtime: "nodejs" };
+
+>>>>>>> 2a982d2 (merged)
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
 

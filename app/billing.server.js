@@ -11,12 +11,15 @@ const COMMISSION_RATE = 0.015; // 1.5%
 
 const STICKER_PROP_KEYS = ["_Design_URL", "Design_URL"];
 
+<<<<<<< HEAD
 const SUPPORTED_BILLING_CURRENCIES = new Set([
   "USD", "CAD", "EUR", "GBP", "AUD", "JPY", "CHF", "HKD", "SGD", "SEK",
   "NOK", "DKK", "NZD", "MXN", "BRL", "INR", "PLN", "CZK", "ILS", "THB",
   "TWD", "CNY",
 ]);
 
+=======
+>>>>>>> 2a982d2 (merged)
 function isStickerOrder(order) {
   if (!order?.line_items?.length) return false;
   for (const line of order.line_items) {
@@ -55,23 +58,37 @@ async function getOrCreateShopBilling(shop) {
 }
 
 /**
+<<<<<<< HEAD
  * Managed Pricing: Shopify handles subscription automatically.
  * We just ensure the shop record exists in DB and return hasSubscription: true.
  */
 export async function ensureBillingSubscription(admin, shop, returnUrl) {
+=======
+ * Managed pricing: subscription is handled in the Partner Dashboard, not via Billing API here.
+ * Ensures a `ShopBilling` row exists for sticker-order counting / logging.
+ */
+export async function ensureBillingSubscription(shop) {
+>>>>>>> 2a982d2 (merged)
   await db.shopBilling.upsert({
     where: { shop },
     create: { shop, stickerOrderCount: 0 },
     update: {},
   });
+<<<<<<< HEAD
   return { hasSubscription: true, usageLineItemId: null };
+=======
+>>>>>>> 2a982d2 (merged)
 }
 
 /**
  * Record a sticker order and track usage count.
  * Commission charging is handled by Shopify Managed Pricing automatically.
  */
+<<<<<<< HEAD
 export async function recordStickerOrderAndCharge(admin, shop, order) {
+=======
+export async function recordStickerOrderAndCharge(_admin, shop, order) {
+>>>>>>> 2a982d2 (merged)
   if (!order?.id || !isStickerOrder(order)) return;
 
   const billing = await getOrCreateShopBilling(shop);
@@ -94,4 +111,8 @@ export async function recordStickerOrderAndCharge(admin, shop, order) {
 
   // Log for records — actual charge via Managed Pricing
   console.log(`[billing] Shop ${shop}: order #${order.name || order.id}, amount: ${amount} ${currency} (1.5% commission — Managed Pricing)`);
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 2a982d2 (merged)

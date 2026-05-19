@@ -1,15 +1,24 @@
+<<<<<<< HEAD
 import { useFetcher, useLoaderData, redirect } from "react-router";
+=======
+import { useFetcher, useLoaderData } from "react-router";
+>>>>>>> 2a982d2 (merged)
 import { authenticate } from "../shopify.server";
 import { ensureBillingSubscription } from "../billing.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 export const loader = async ({ request }) => {
+<<<<<<< HEAD
   const { admin, scopes, session } = await authenticate.admin(request);
+=======
+  const { scopes, session } = await authenticate.admin(request);
+>>>>>>> 2a982d2 (merged)
   const scopesDetail = await scopes.query();
   const hasDraftOrderScope = scopesDetail.granted.includes("write_draft_orders");
 
   const shop = session?.shop;
   if (shop) {
+<<<<<<< HEAD
     const url = new URL(request.url);
     const returnUrl = `${url.origin}${url.pathname}`;
     const billing = await ensureBillingSubscription(admin, shop, returnUrl);
@@ -19,6 +28,9 @@ export const loader = async ({ request }) => {
     if (!billing.hasSubscription && !billing.confirmationUrl) {
       return { needsDraftOrderScope: !hasDraftOrderScope, billingSetupFailed: true };
     }
+=======
+    await ensureBillingSubscription(shop);
+>>>>>>> 2a982d2 (merged)
   }
 
   return { needsDraftOrderScope: !hasDraftOrderScope };
@@ -306,7 +318,11 @@ const styles = `
 `;
 
 export default function Index() {
+<<<<<<< HEAD
   const { needsDraftOrderScope, billingSetupFailed } = useLoaderData() || {};
+=======
+  const { needsDraftOrderScope } = useLoaderData() || {};
+>>>>>>> 2a982d2 (merged)
   const scopeFetcher = useFetcher();
 
   return (
@@ -315,12 +331,15 @@ export default function Index() {
       <s-page heading="Custom Sticker App">
         <div className="csa-dashboard">
 
+<<<<<<< HEAD
           {billingSetupFailed && (
             <div className="csa-alert">
               ⚠️ Billing could not be set up. Please refresh the page or go to Settings → Billing to approve the app charge.
             </div>
           )}
 
+=======
+>>>>>>> 2a982d2 (merged)
           {needsDraftOrderScope && (
             <div className="csa-scope-card">
               <h3>⚡ Action Required: Grant Permission</h3>

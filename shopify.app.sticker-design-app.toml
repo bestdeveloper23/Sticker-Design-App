@@ -1,14 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-<<<<<<< HEAD
-client_id = "b7f6b4e0ba14925a30c378de23b1b8e8"
-name = "Custom Sticker App"
-application_url = "https://anycontourapp.vercel.app"
-=======
 client_id = "f38d96b7b896ea08928808dea18f0872"
 name = "Sticker design App"
-application_url = "https://sticker-design-app.vercel.app/
->>>>>>> 2a982d2 (merged)
+application_url = "https://sticker-design-app.vercel.app/"
 embedded = true
 
 [build]
@@ -35,13 +29,7 @@ subpath = "custom-stickers"
 
 [auth]
 redirect_urls = [ 
-<<<<<<< HEAD
-  "https://anycontourapp.vercel.app/api/auth/callback",
-  "https://anycontourapp.vercel.app/auth/callback",
-  "https://anycontourapp.vercel.app/auth/shopify/callback"
-=======
   "https://sticker-design-app.vercel.app/api/auth/callback",
   "https://sticker-design-app.vercel.app/auth/callback",
   "https://sticker-design-app.vercel.app/auth/shopify/callback"
->>>>>>> 2a982d2 (merged)
 ]
