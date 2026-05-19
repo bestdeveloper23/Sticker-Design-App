@@ -1,29 +1,23 @@
 import { authenticate } from "../shopify.server";
 import { computeStickerLineTotal } from "../pricing.server";
 import { getOrCreateShopStickerSettings } from "../sticker-settings.server";
-<<<<<<< HEAD
-=======
 import {
   DEFAULT_DESIGNER_ORIGIN,
   corsHeadersForAllowedDesigner,
   isAllowedDesignerOrigin,
 } from "../cors-designer.server";
->>>>>>> 2a982d2 (merged)
 
 type AppProxyAuth = {
   admin?: unknown;
   session?: { shop?: string | null } | null;
 };
 
-<<<<<<< HEAD
-=======
 /** Strip trailing slashes so `/settings` and `/settings/` match the same handler. */
 function normalizeProxyPathname(pathname: string): string {
   const p = pathname.replace(/\/+$/, "");
   return p === "" ? "/" : p;
 }
 
->>>>>>> 2a982d2 (merged)
 function resolveShopFromAppProxy(proxyAuth: AppProxyAuth, request: Request): string | null {
   const s = proxyAuth.session?.shop;
   if (s && typeof s === "string") return s;
@@ -35,12 +29,8 @@ function resolveShopFromAppProxy(proxyAuth: AppProxyAuth, request: Request): str
 
 export const action = async ({ request }) => {
   const url = new URL(request.url);
-<<<<<<< HEAD
-  if (request.method !== "POST" || !url.pathname.endsWith("create-draft")) {
-=======
   const proxyPath = normalizeProxyPathname(url.pathname || "");
   if (request.method !== "POST" || !proxyPath.endsWith("create-draft")) {
->>>>>>> 2a982d2 (merged)
     return Response.json({ error: "Method or path not allowed" }, { status: 400 });
   }
 
@@ -251,38 +241,6 @@ export const action = async ({ request }) => {
   return Response.json({ checkoutUrl: invoiceUrl });
 };
 
-<<<<<<< HEAD
-/** Default designer origin; also used when no custom origin is allowed. */
-const DEFAULT_DESIGNER_ORIGIN =
-  process.env.DESIGNER_ORIGIN || "https://stickeroutline.replit.app";
-
-/** Allowed designer origins for proxy (avoid SSRF). Comma-separated in env. */
-function getAllowedDesignerOrigins(): string[] {
-  const list = [
-    DEFAULT_DESIGNER_ORIGIN,
-    ...(process.env.ALLOWED_DESIGNER_ORIGINS || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  ];
-  return [...new Set(list)];
-}
-
-function isAllowedDesignerOrigin(origin: string | null): boolean {
-  if (!origin || typeof origin !== "string") return false;
-  try {
-    const u = new URL(origin);
-    if (u.protocol !== "https:") return false;
-    const allowed = getAllowedDesignerOrigins();
-    const normalized = u.origin;
-    return allowed.some((a) => new URL(a).origin === normalized);
-  } catch {
-    return false;
-  }
-}
-
-export const loader = async ({ request }) => {
-=======
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const pathname = normalizeProxyPathname(url.pathname || "");
@@ -295,7 +253,6 @@ export const loader = async ({ request }) => {
     return new Response(null, { status: 204, headers: cors });
   }
 
->>>>>>> 2a982d2 (merged)
   let proxyAuth: AppProxyAuth;
   try {
     proxyAuth = (await authenticate.public.appProxy(request)) as AppProxyAuth;
@@ -307,11 +264,6 @@ export const loader = async ({ request }) => {
     );
   }
 
-<<<<<<< HEAD
-  const url = new URL(request.url);
-  const pathname = url.pathname || "";
-=======
->>>>>>> 2a982d2 (merged)
   const shop = resolveShopFromAppProxy(proxyAuth, request);
 
   if (request.method === "GET" && pathname.endsWith("/settings")) {
@@ -320,20 +272,12 @@ export const loader = async ({ request }) => {
     }
     try {
       const settings = await getOrCreateShopStickerSettings(shop);
-<<<<<<< HEAD
-      return Response.json(settings, {
-        headers: {
-          "Cache-Control": "private, max-age=120",
-        },
-      });
-=======
       const cors = corsHeadersForAllowedDesigner(request);
       const headers: Record<string, string> = {
         "Cache-Control": "private, max-age=120",
         ...(cors || {}),
       };
       return Response.json(settings, { headers });
->>>>>>> 2a982d2 (merged)
     } catch (e) {
       console.error("[apps.proxy] settings load failed:", e);
       return Response.json({ error: "Could not load settings" }, { status: 500 });

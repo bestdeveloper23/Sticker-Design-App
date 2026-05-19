@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
-<<<<<<< HEAD
-import {
-  useFetcher,
-  useLoaderData,
-  redirect,
-} from "react-router";
-=======
 import { useFetcher, useLoaderData } from "react-router";
->>>>>>> 2a982d2 (merged)
 import { authenticate } from "../shopify.server";
 import { ensureBillingSubscription } from "../billing.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -17,22 +9,6 @@ import {
   saveShopStickerSettings,
 } from "../sticker-settings.server";
 
-<<<<<<< HEAD
-export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = session.shop;
-  const url = new URL(request.url);
-  const returnUrl = `${url.origin}${url.pathname}`;
-  const billing = await ensureBillingSubscription(admin, shop, returnUrl);
-  if (!billing.hasSubscription && billing.confirmationUrl) {
-    return redirect(billing.confirmationUrl);
-  }
-  if (!billing.hasSubscription && !billing.confirmationUrl) {
-    return { billingSetupFailed: true, settings: getDefaultStickerAppSettings() };
-  }
-  const settings = await getOrCreateShopStickerSettings(shop);
-  return { billingSetupFailed: false, settings };
-=======
 export const config = { runtime: "nodejs" };
 
 export const loader = async ({ request }) => {
@@ -41,7 +17,6 @@ export const loader = async ({ request }) => {
   await ensureBillingSubscription(shop);
   const settings = await getOrCreateShopStickerSettings(shop);
   return { settings };
->>>>>>> 2a982d2 (merged)
 };
 
 export const action = async ({ request }) => {
@@ -163,27 +138,6 @@ export default function StickerSettingsPage() {
           </s-paragraph>
         </s-section>
 
-<<<<<<< HEAD
-        {loaderData.billingSetupFailed && (
-          <div
-            role="alert"
-            style={{
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: "10px",
-              padding: "14px 18px",
-              marginBottom: "16px",
-              fontSize: "13px",
-              color: "#991b1b",
-            }}
-          >
-            Billing could not be verified. Settings shown are defaults; save may still work after
-            billing is fixed.
-          </div>
-        )}
-
-=======
->>>>>>> 2a982d2 (merged)
         {err && (
           <div
             role="alert"
