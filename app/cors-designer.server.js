@@ -14,27 +14,67 @@ export function getAllowedDesignerOrigins() {
   return [...new Set(list)];
 }
 
+/** Strict allowlist only — use for server-side fetches (e.g. app proxy) to avoid SSRF. */
 export function isAllowedDesignerOrigin(origin) {
   if (!origin || typeof origin !== "string") return false;
   try {
     const u = new URL(origin);
     if (u.protocol !== "https:") return false;
-    const allowed = getAllowedDesignerOrigins();
     const normalized = u.origin;
-    return allowed.some((a) => new URL(a).origin === normalized);
+    for (const a of getAllowedDesignerOrigins()) {
+      try {
+        if (new URL(a).origin === normalized) return true;
+      } catch {
+        /* skip invalid env entry */
+      }
+    }
+    return false;
   } catch {
     return false;
   }
 }
 
-/** CORS headers when the browser Origin is an allowed Replit/designer host. */
+/** HTTPS host is Replit-hosted (browser CORS only; do not use for outbound SSRF checks). */
+function isReplitHttpsDesignerOrigin(origin) {
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase();
+    return h === "replit.app" || h.endsWith(".replit.app") || h.endsWith(".replit.dev");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Origins that may receive CORS on GET /embed/settings (and proxy /settings).
+ * - Always: explicit allowlist (DESIGNER_ORIGIN + ALLOWED_DESIGNER_ORIGINS).
+ * - Unless DESIGNER_CORS_STRICT=1: any https *.replit.app / *.replit.dev (preview URLs).
+ */
+function isBrowserCorsAllowedDesignerOrigin(origin) {
+  if (isAllowedDesignerOrigin(origin)) return true;
+  const strict =
+    process.env.DESIGNER_CORS_STRICT === "1" ||
+    process.env.DESIGNER_CORS_STRICT === "true";
+  if (strict) return false;
+  return isReplitHttpsDesignerOrigin(origin);
+}
+
+/** CORS headers when the browser Origin is allowed for the designer iframe. */
 export function corsHeadersForAllowedDesigner(request) {
   const origin = request.headers.get("Origin");
-  if (!origin || !isAllowedDesignerOrigin(origin)) return null;
+  if (!origin || !isBrowserCorsAllowedDesignerOrigin(origin)) return null;
+
+  const reqHdr = request.headers.get("Access-Control-Request-Headers");
+  const allowHeaders =
+    reqHdr && /^[\w\-\s,]+$/i.test(reqHdr.trim())
+      ? reqHdr.trim()
+      : "Content-Type, Accept";
+
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Allow-Headers": allowHeaders,
     Vary: "Origin",
   };
 }
