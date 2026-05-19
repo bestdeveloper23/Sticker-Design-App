@@ -1,15 +1,16 @@
 /**
  * Public embed settings for the Replit designer (iframe).
- * Served from the app host (e.g. Vercel) with CORS — not via storefront app proxy,
- * because Shopify often does not forward Access-Control-* on proxy responses.
+ * Path: GET /embed/settings?shop=STORE.myshopify.com
+ * (Folder route so React Router reliably registers the URL on Vercel.)
  */
-import { getOrCreateShopStickerSettings } from "../sticker-settings.server";
+import type { LoaderFunctionArgs } from "react-router";
+import { getOrCreateShopStickerSettings } from "../../sticker-settings.server";
 import {
   corsHeadersForAllowedDesigner,
   isValidEmbedShopParam,
-} from "../cors-designer.server";
+} from "../../cors-designer.server";
 
-export const loader = async ({ request }: { request: Request }) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const cors = corsHeadersForAllowedDesigner(request);
 
@@ -40,10 +41,15 @@ export const loader = async ({ request }: { request: Request }) => {
     };
     return Response.json(settings, { headers });
   } catch (e) {
-    console.error("[api.embed.settings] load failed:", e);
+    console.error("[embed.settings] load failed:", e);
     return Response.json(
       { error: "Could not load settings" },
       { status: 500, headers: cors || {} },
     );
   }
 };
+
+/** Required for route module; loader returns JSON for data requests. */
+export default function EmbedSettingsStub() {
+  return null;
+}

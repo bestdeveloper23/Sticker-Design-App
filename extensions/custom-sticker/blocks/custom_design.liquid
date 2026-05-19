@@ -184,7 +184,7 @@
     function embedSettingsUrlForIframe() {
       var shop = SHOP_MYSHOPIFY_DOMAIN || "";
       if (!shop) return "";
-      return APP_BACKEND_ORIGIN + "/api/embed/settings?shop=" + encodeURIComponent(shop);
+      return APP_BACKEND_ORIGIN + "/embed/settings?shop=" + encodeURIComponent(shop);
     }
     function fetchStickerShopSettings(callback) {
       if (STICKER_SHOP_SETTINGS) {
